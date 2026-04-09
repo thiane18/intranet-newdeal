@@ -65,3 +65,28 @@ jobs:
         run: |
           docker build -t ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} .
           docker push ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+
+  # JOB 4 - Notification email
+  notification:
+    needs: [build, scan, push]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Envoyer notification email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "Pipeline CI - intranet-newdeal - ${{ needs.push.result }}"
+          body: |
+            Le pipeline CI s'est terminé.
+
+            - Build : ${{ needs.build.result }}
+            - Scan  : ${{ needs.scan.result }}
+            - Push  : ${{ needs.push.result }}
+
+            Repo : https://github.com/thiane18/intranet-newdeal
+          to: ${{ secrets.MAIL_USERNAME }}
+          from: ${{ secrets.MAIL_USERNAME }}
