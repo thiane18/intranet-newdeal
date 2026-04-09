@@ -33,18 +33,16 @@ jobs:
     runs-on: runner_prod
     steps:
       - name: Pull image depuis Docker Hub
-        run: |
-          docker pull ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+        run: docker pull ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
       - name: Arrêter l'ancien conteneur
-        run: docker stop intranet-app || true
+        run: docker stop intranet-app
+        continue-on-error: true
 
       - name: Supprimer l'ancien conteneur
-        run: docker rm intranet-app || true
+        run: docker rm intranet-app
+        continue-on-error: true
 
       - name: Lancer le nouveau conteneur
         run: |
-          docker run -d \
-            -p 80:80 \
-            --name intranet-app \
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          docker run -d -p 80:80 --name intranet-app ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
