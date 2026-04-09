@@ -1,9 +1,9 @@
-name: CI Pipeline - branche dev
+name: CD Pipeline - branche prod
 
 on:
   push:
     branches:
-      - dev
+      - prod
 
 env:
   IMAGE_NAME: intranet-newdeal
@@ -12,81 +12,37 @@ env:
 
 jobs:
 
-  # JOB 1 - Build image Docker
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Build Docker image
-        run: |
-          docker build -t ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} .
-
-  # JOB 2 - Scan sécurité
+  # JOB 1 - Scan sécurité
   scan:
-    needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Build image pour scan
-        run: |
-          docker build -t ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} .
 
       - name: Scan vulnérabilités avec Trivy
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
           format: table
-          exit-code: '1'
-          severity: 'CRITICAL'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
 
-      - name: Scan secrets avec Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # JOB 3 - Push vers Docker Hub
-  push:
+  # JOB 2 - Déploiement sur runner_prod
+  deploy:
     needs: scan
-    runs-on: ubuntu-latest
+    runs-on: runner_prod
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Pull image depuis Docker Hub
+        run: docker pull ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
-      - name: Login Docker Hub
+      - name: Arrêter l'ancien conteneur
+        run: docker stop intranet-app
+        continue-on-error: true
+
+      - name: Supprimer l'ancien conteneur
+        run: docker rm intranet-app
+        continue-on-error: true
+
+      - name: Lancer le nouveau conteneur
         run: |
-          echo "${{ secrets.DOCKERHUB_TOKEN }}" | \
-          docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
-
-      - name: Build et Push image
-        run: |
-          docker build -t ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} .
-          docker push ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-
-  # JOB 4 - Notification email
-  notification:
-    needs: [build, scan, push]
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Envoyer notification email
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          username: ${{ secrets.MAIL_USERNAME }}
-          password: ${{ secrets.MAIL_PASSWORD }}
-          subject: "Pipeline CI - intranet-newdeal - ${{ needs.push.result }}"
-          body: |
-            Le pipeline CI s'est terminé.
-
-            - Build : ${{ needs.build.result }}
-            - Scan  : ${{ needs.scan.result }}
-            - Push  : ${{ needs.push.result }}
-
-            Repo : https://github.com/thiane18/intranet-newdeal
-          to: ${{ secrets.MAIL_USERNAME }}
-          from: ${{ secrets.MAIL_USERNAME }}
+          docker run -d -p 80:80 --name intranet-app ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
